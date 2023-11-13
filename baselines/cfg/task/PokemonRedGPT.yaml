@@ -1,0 +1,6 @@
+env:
+  env_name: red_gym_envGPT
+  test: 1
+name: PokemonRedGPT
+params:
+  test: 1

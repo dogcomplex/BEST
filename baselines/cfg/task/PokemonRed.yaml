@@ -1,0 +1,6 @@
+# used to create the object
+name: PokemonRed
+env:
+  test: 1
+params:
+  test: 1
