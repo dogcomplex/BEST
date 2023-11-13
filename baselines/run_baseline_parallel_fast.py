@@ -33,12 +33,14 @@ if __name__ == '__main__':
 
     ep_length = 2048 * 10
     sess_path = Path(f'session_{str(uuid.uuid4())[:8]}')
-
+    print('CWD: ', Path.cwd())
+    #anticipates .\Eureka\eureka\outputs\eureka\2023-11-13_13-04-20 CWD, we just want .\Eureka :
+    eureka_root_dir = str(Path.cwd().parent.parent.parent.parent) 
     env_config = {
                 'headless': False, 'save_final_state': True, 'early_stop': False,
-                'action_freq': 24, 'init_state': 'C:/CODE/PokemonRedExperiments/has_pokedex_nballs.state', 'max_steps': ep_length, 
+                'action_freq': 24, 'init_state': eureka_root_dir + './PokemonRedExperiments/has_pokedex_nballs.state', 'max_steps': ep_length, 
                 'print_rewards': True, 'save_video': True, 'fast_video': True, 'session_path': sess_path,
-                'gb_path': 'C:/CODE/PokemonRedExperiments/PokemonRed.gb', 'debug': False, 'sim_frame_dist': 2_000_000.0, 
+                'gb_path': eureka_root_dir + './PokemonRedExperiments/PokemonRed.gb', 'debug': False, 'sim_frame_dist': 2_000_000.0, 
                 'use_screen_explore': True, 'reward_scale': 4, 'extra_buttons': True,
                 'explore_weight': 3 # 2.5
             }
