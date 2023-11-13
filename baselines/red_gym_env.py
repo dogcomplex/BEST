@@ -207,7 +207,7 @@ class RedGymEnv(Env):
             
         self.update_heal_reward()
 
-        new_reward, new_prog = self.update_reward()
+        new_reward, new_prog = self.compute_reward()
         
         self.last_health = self.read_hp_fraction()
 
@@ -306,7 +306,9 @@ class RedGymEnv(Env):
         
         self.seen_coords[coord_string] = self.step_count
 
-    def update_reward(self):
+    def compute_reward(self):
+        # TODO should update self with standard organization like:
+        # self.gt_rew_buf, self.reset_buf[:], self.consecutive_successes[:] = compute_success(...)
         # compute reward
         old_prog = self.group_rewards()
         self.progress_reward = self.get_game_state_reward()
