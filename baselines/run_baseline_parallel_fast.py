@@ -5,8 +5,10 @@ import os
 import uuid
 import sys
 import numpy as np
+import importlib
 import torch
-from red_gym_env import RedGymEnv
+import time
+#from red_gym_env import RedGymEnv # deprecated. done dynamically via conf.gym_env now
 from stable_baselines3 import A2C, PPO
 from stable_baselines3.common import env_checker
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -22,7 +24,21 @@ def make_env(rank, env_conf, seed=0):
     :param rank: (int) index of the subprocess
     """
     def _init():
-        env = RedGymEnv(env_conf)
+        # sleep 5s
+        # time.sleep(5)
+        # env_class = import_file('RedGymEnv', env_conf['gym_env'])
+        print('\nSEARCHING FOR CODE FROM: ' + env_conf['gym_env'])
+        if env_conf['gym_env'] == 'default':
+            from red_gym_env import RedGymEnv
+            env = RedGymEnv(env_conf)
+        else:
+            sys.path.append(os.getcwd())
+            RedGymEnvClass = getattr(importlib.import_module(env_conf['gym_env']), 'RedGymEnv')
+            print('\nRedGymEnvClass Found: ', RedGymEnvClass)
+            env = RedGymEnvClass(env_conf)
+        path_str = '' + os.path.abspath(sys.modules[env.__class__.__module__].__file__)
+        print('\nEXECUTING CODE FROM:' + path_str)
+
         env.reset(seed=(seed + rank))
         return env
     set_random_seed(seed)
@@ -31,23 +47,30 @@ def make_env(rank, env_conf, seed=0):
 if __name__ == '__main__':
 
 
-    ep_length = 2048 * 10
+    ep_length = 256 * 100
     sess_path = Path(f'session_{str(uuid.uuid4())[:8]}')
-    print('CWD: ', Path.cwd())
+    print('\nCWD: ', Path.cwd())
+
     #anticipates .\Eureka\eureka\outputs\eureka\2023-11-13_13-04-20 CWD, we just want .\Eureka :
-    eureka_root_dir = str(Path.cwd().parent.parent.parent.parent) 
+    eureka_root_dir = str(Path.cwd().parent.parent.parent.parent)
     env_config = {
-                'headless': False, 'save_final_state': True, 'early_stop': False,
-                'action_freq': 24, 'init_state': eureka_root_dir + './PokemonRedExperiments/has_pokedex_nballs.state', 'max_steps': ep_length, 
-                'print_rewards': True, 'save_video': True, 'fast_video': True, 'session_path': sess_path,
-                'gb_path': eureka_root_dir + './PokemonRedExperiments/PokemonRed.gb', 'debug': False, 'sim_frame_dist': 2_000_000.0, 
-                'use_screen_explore': True, 'reward_scale': 4, 'extra_buttons': True,
-                'explore_weight': 3 # 2.5
-            }
+            'headless': False, 'save_final_state': True, 'early_stop': False,
+            'action_freq': 24, 'init_state': eureka_root_dir + '/PokemonRedExperiments/has_pokedex_nballs.state', 'max_steps': ep_length, 
+            'print_rewards': True, 'save_video': True, 'fast_video': True, 'session_path': sess_path,
+            'gb_path': eureka_root_dir + '/PokemonRedExperiments/PokemonRed.gb', 'debug': False, 'sim_frame_dist': 2_000_000.0, 
+            'use_screen_explore': True, 'extra_buttons': True,
+            'gym_env': 'default' # default, overwritten by eureka generations
+        }
     
-    print(env_config)
+    # add stdin params to env_config
+    print('\nsys.argv: ', sys.argv)
+    for arg in sys.argv[1:]:
+        k, v = arg.split('=')
+        env_config[k] = v
+
+    print('\n CONFIG: ', env_config)
     
-    num_cpu = 4  # Also sets the number of episodes per training iteration
+    num_cpu = 2  # Also sets the number of episodes per training iteration
     env = SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
     
     checkpoint_callback = CheckpointCallback(save_freq=ep_length, save_path=sess_path,
@@ -71,7 +94,7 @@ if __name__ == '__main__':
     for i in range(learn_steps):
         model.learn(total_timesteps=(ep_length)*num_cpu, callback=checkpoint_callback)
 
-    print('Pokemon emulation done')
+    print('\nPokemon emulation done')
 
     # dump config dict
     exp_date = 'red_gym_env' + '-{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.datetime.now())
