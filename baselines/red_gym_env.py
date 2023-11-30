@@ -473,7 +473,6 @@ class RedGymEnv(Env):
             if self.last_health > 0:
                 heal_amount = cur_health - self.last_health
                 if heal_amount > 0.5:
-                    print(f'healed: {heal_amount}')
                     self.save_screenshot('healing')
                 self.total_healing_rew += heal_amount * 4
             else:
@@ -517,7 +516,9 @@ class RedGymEnv(Env):
         self.knn_count = self.knn_index.get_current_count() if self.use_screen_explore else len(self.seen_coords)
         self.max_poke_levels = max(self.max_poke_levels, self.get_levels_sum())
         self.knn_reward = self.get_knn_reward()
-    
+        self.selected_menu_item = self.read_m(0xCC26) # Currently selected menu item (topmost is 0)
+        self.last_menu_item_id = self.read_m(0xCC28) # ID of the last menu item
+        self.menu_keyport = self.read_m(0xCC29) # Bitmask applied to the key port for the current menu (0 = no menu open)
 
         total_reward, sub_rewards = self.compute_reward()
 
@@ -583,7 +584,7 @@ class RedGymEnv(Env):
                 100 * self.read_bcd(self.read_m(0xD348)) +
                 self.read_bcd(self.read_m(0xD349)))
     
-
+""" 
 # general reward function guide:
 def compute_success(
         # some_var: float,
@@ -601,7 +602,7 @@ def compute_success(
     # return tensor total as weighted sum of sub_rewards
     # total_reward = 
     return total_reward, sub_rewards
-
+ """
 # best reward function so far:
 def compute_success(
         num_poke: float, poke_xps: List[float], money: float, seen_poke_count: float,

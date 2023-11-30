@@ -473,7 +473,6 @@ class RedGymEnv(Env):
             if self.last_health > 0:
                 heal_amount = cur_health - self.last_health
                 if heal_amount > 0.5:
-                    print(f'healed: {heal_amount}')
                     self.save_screenshot('healing')
                 self.total_healing_rew += heal_amount * 4
             else:
@@ -517,7 +516,9 @@ class RedGymEnv(Env):
         self.knn_count = self.knn_index.get_current_count() if self.use_screen_explore else len(self.seen_coords)
         self.max_poke_levels = max(self.max_poke_levels, self.get_levels_sum())
         self.knn_reward = self.get_knn_reward()
-    
+        self.selected_menu_item = self.read_m(0xCC26) # Currently selected menu item (topmost is 0)
+        self.last_menu_item_id = self.read_m(0xCC28) # ID of the last menu item
+        self.menu_keyport = self.read_m(0xCC29) # Bitmask applied to the key port for the current menu (0 = no menu open)
 
         total_reward, sub_rewards = self.compute_reward()
 
@@ -536,7 +537,7 @@ class RedGymEnv(Env):
     
     # def compute_reward(self) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     def compute_reward(self):
-        total_reward, sub_rewards = compute_success(self.num_poke, self.poke_xps, self.money, self.seen_poke_count, self.all_events_score, self.badges, self.knn_reward, self.level_rew, self.max_opponent_level, self.total_healing_rew, self.died_count)
+        total_reward, sub_rewards = compute_success(self.num_poke, self.poke_xps, self.money, self.seen_poke_count, self.all_events_score, self.badges, self.knn_reward)
         # TODO define compute_success function below
         # total_reward, sub_rewards = compute_success(...)
         return total_reward, sub_rewards
@@ -584,7 +585,7 @@ class RedGymEnv(Env):
                 100 * self.read_bcd(self.read_m(0xD348)) +
                 self.read_bcd(self.read_m(0xD349)))
     
-
+""" 
 # general reward function guide:
 def compute_success(
         # some_var: float,
@@ -602,7 +603,7 @@ def compute_success(
     # return tensor total as weighted sum of sub_rewards
     # total_reward = 
     return total_reward, sub_rewards
-
+ """
 # best reward function so far:
 def compute_success(
         num_poke: float, poke_xps: List[float], money: float, seen_poke_count: float,
@@ -653,67 +654,43 @@ import math
 import torch
 from torch import Tensor
 def compute_success(
-    num_poke: float, 
-    poke_xps: List[float], 
-    money: float, 
-    seen_poke_count: float,
-    all_events_score: float, 
-    badges: float, 
-    knn_reward: float,
-    level_rew: float,
-    max_opponent_level: float,
-    total_healing_rew: float,
-    died_count: float
-) -> Tuple[float, Dict[str, float]]:
+        num_poke: float, poke_xps: List[float], money: float, seen_poke_count: float,
+        all_events_score: float, badges: float, knn_reward: float
+    ) -> Tuple[float, Dict[str, float]]:
 
-    # Adjust scale and temperature parameters for each reward component
-    money_temp, poke_count_temp, xp_temp = 0.00001, 2.0, 0.1
-    events_temp, badges_temp, explore_temp = 0.2, 20.0, 0.8
-    level_temp, healing_temp, death_penalty_temp = 0.05, 0.002, -1.0
-    opponent_level_temp = 0.01
-    max_reward_cap = 60000  # Cap for normalization of money reward
+    # Adjustments to scale and temperature parameters
+    money_temp, poke_count_temp, xp_temp = 0.0001, 4.0, 0.15
+    events_temp, badges_temp, explore_temp = 0.25, 30.0, 0.9
 
-    # Normalize and scale each reward component
-    money_reward = money_temp * min(money, max_reward_cap)
-    poke_count_reward = poke_count_temp * (seen_poke_count / 150.0)
-    xp_reward = xp_temp * torch.tensor(poke_xps).sum() / (100.0 * 6.0)
-    events_reward = events_temp * (all_events_score / 50.0)
+    # Normalize and scale money assuming the reward increases linearly with money, capping at 60000 for better gradient
+    money_reward = money_temp * min(money, 60000)
+
+    # Enhance seen Pokemon count by a temperature parameter, since Pokemon can be caught frequently
+    poke_count_reward = poke_count_temp * (seen_poke_count / 200.0)
+
+    # Scale experience by counting XP points rewarding leveling up Pokemon rather than catching many Pokemon with low XP
+    xp_reward = xp_temp * sum(poke_xps) / (100.0 * 6.0)  # Assuming 100 is the max level
+
+    # Scale events reward to be more sensitive to game progression events
+    events_reward = events_temp * (all_events_score / 55.0)
+
+    # Badges are very important so increase the temperature parameter significantly to encourage collecting badges
     badges_reward = badges_temp * (badges / 8.0)
-    explore_reward = explore_temp * (knn_reward / 128.0)
-    level_reward = level_temp * (level_rew / 100.0)
-    healing_reward = healing_temp * total_healing_rew
-    death_penalty = death_penalty_temp * died_count
-    opponent_level_reward = opponent_level_temp * (max_opponent_level / 100.0) 
-    
-    # Combine rewards into a dictionary
+
+    # Exploration should be sensitive but not overly so, considering the KNN count as an exploration metric
+    explore_reward = explore_temp * (knn_reward / 150.0)
+
+    # Compute each sub-reward and compile into a dictionary
     sub_rewards = {
         'money_reward': money_reward,
         'poke_count_reward': poke_count_reward,
         'xp_reward': xp_reward,
         'events_reward': events_reward,
         'badges_reward': badges_reward,
-        'explore_reward': explore_reward,
-        'level_reward': level_reward,
-        'healing_reward': healing_reward,
-        'death_penalty': death_penalty,
-        'opponent_level_reward': opponent_level_reward
+        'explore_reward': explore_reward
     }
-    
-    # Define weights for each reward component if needed, otherwise equally weight them
-    reward_weights = {
-        'money_reward': 1.0,
-        'poke_count_reward': 1.0,
-        'xp_reward': 1.0,
-        'events_reward': 1.0,
-        'badges_reward': 1.0,
-        'explore_reward': 1.0,
-        'level_reward': 1.0,
-        'healing_reward': 1.0,
-        'death_penalty': 1.0,
-        'opponent_level_reward': 1.0
-    }
-    
-    # Compute the total weighted reward
-    total_reward = sum(sub_rewards[key] * reward_weights[key] for key in sub_rewards)
+
+    # Compute the total reward
+    total_reward = sum(sub_rewards.values())
 
     return total_reward, sub_rewards
