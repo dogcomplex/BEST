@@ -1,5 +1,5 @@
 # [B.E.S.T.](https://www.youtube.com/watch?app=desktop&v=XTte01kdG_k&ab_channel=NeilCicieregaMusic)
-# (Acronym TBD...  Something Something Search Tree?)
+(Acronym TBD...  Something Something Search Tree?)
 
 A mashup of Eureka and PokemonRedExperiments.  Can an AI on a self-improvement reward-function-rewriting loop become the very best, like no one ever was?
 
